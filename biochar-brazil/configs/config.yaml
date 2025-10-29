@@ -1,0 +1,31 @@
+application_name: biochar-brazil
+version: 0.1.0
+description: A geospatial tool for identifying high-potential areas for biochar application across Brazil.
+
+data:
+  raw_data_path: data/raw/
+  processed_data_path: data/processed/
+  external_data_path: data/external/
+
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  handlers:
+    - console
+    - file
+
+geo:
+  region: Brazil
+  coordinate_system: EPSG:4326
+
+model:
+  spatial_model_path: src/models/spatial_model.py
+  ml_model_path: src/models/ml_model.py
+
+analysis:
+  suitability_threshold: 0.5
+  risk_assessment_enabled: true
+
+visualization:
+  map_output_path: output/maps/
+  plot_output_path: output/plots/

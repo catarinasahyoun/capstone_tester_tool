@@ -1,0 +1,17 @@
+numpy
+pandas
+geopandas
+scikit-learn
+matplotlib
+seaborn
+pydeck
+requests
+pydantic
+jupyter
+notebook
+pytest
+pytest-cov
+rasterio
+shapely
+fiona
+xarray
