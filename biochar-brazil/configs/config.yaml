@@ -24,7 +24,7 @@ model:
   ml_model_path: src/models/ml_model.py
 
 analysis:
-  suitability_threshold: 0.5
+  suitability_threshold: 10
   risk_assessment_enabled: true
 
 visualization:
