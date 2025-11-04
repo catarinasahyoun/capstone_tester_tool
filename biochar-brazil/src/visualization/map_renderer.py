@@ -1,35 +1,56 @@
+"""
+Map rendering utilities for the Biochar-Brazil project.
+Generates interactive maps using Pydeck (Deck.gl).
+"""
+
 from pydeck import Deck, ScatterplotLayer
 import pandas as pd
+from pathlib import Path
 
-def render_map(data, map_style='light', zoom_level=5):
+
+def render_map(
+    data: pd.DataFrame,
+    output_path: str = "output/maps/biochar_map.html",
+    map_style: str = "light",
+    zoom_level: int = 5,
+    radius: int = 1000
+):
     """
-    Renders an interactive map using Pydeck.
+    Render an interactive Pydeck map from a DataFrame with latitude and longitude.
 
     Parameters:
-    - data: DataFrame containing latitude and longitude for points to plot.
-    - map_style: The style of the map (e.g., 'light', 'dark').
-    - zoom_level: Initial zoom level for the map.
+    - data (DataFrame): Must contain 'latitude' and 'longitude' columns.
+    - output_path (str): Where to save the HTML map.
+    - map_style (str): 'light' or 'dark' map theme.
+    - zoom_level (int): Initial zoom level.
+    - radius (int): Marker radius for visualization.
     """
-    # Create a scatter plot layer
+    # Validate coordinates
+    if "latitude" not in data.columns or "longitude" not in data.columns:
+        raise ValueError("DataFrame must contain 'latitude' and 'longitude' columns.")
+
+    data = data.dropna(subset=["latitude", "longitude"])
+
     scatter_layer = ScatterplotLayer(
         data=data,
         get_position='[longitude, latitude]',
-        get_radius=1000,
+        get_radius=radius,
         get_fill_color='[255, 0, 0, 160]',
         pickable=True,
     )
 
-    # Create the deck
     deck = Deck(
         layers=[scatter_layer],
         initial_view_state={
-            'latitude': data['latitude'].mean(),
-            'longitude': data['longitude'].mean(),
-            'zoom': zoom_level,
-            'pitch': 0,
+            "latitude": float(data["latitude"].mean()),
+            "longitude": float(data["longitude"].mean()),
+            "zoom": zoom_level,
+            "pitch": 0,
         },
-        map_style=map_style,
+        map_style=f"mapbox://styles/mapbox/{map_style}-v10",
+        tooltip={"text": "Lat: {latitude}\nLon: {longitude}"},
     )
 
-    # Render the map
-    deck.to_html('biochar_map.html', notebook_display=True)
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    deck.to_html(output_path, notebook_display=False)
+    print(f"✅ Interactive map saved to: {output_path}")
