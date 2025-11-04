@@ -1,66 +1,48 @@
-from typing import List
+from typing import List, Dict, Any
 import pandas as pd
 
-# --- Existing basic suitability functions ---------------------------------
+# --- your original simple scoring kept intact ------------------------------
 
 def calculate_suitability_score(soil_properties: pd.DataFrame) -> pd.Series:
-    """Simple scoring logic based on soil pH and organic matter."""
     score = (soil_properties['pH'] - 5.5) * 2 + (soil_properties['organic_matter'] - 3) * 3
-    return score.clip(lower=0)  # Ensure scores are non-negative
-
+    return score.clip(lower=0)
 
 def assess_suitability(soil_data: pd.DataFrame) -> pd.DataFrame:
-    """Assess soil suitability using basic soil properties."""
     soil_data['suitability_score'] = calculate_suitability_score(soil_data)
     return soil_data[['location', 'suitability_score']]
 
-
 def identify_high_potential_areas(soil_data: pd.DataFrame, threshold: float) -> List[str]:
-    """Identify locations exceeding a given suitability score threshold."""
     high_potential_areas = soil_data[soil_data['suitability_score'] > threshold]
     return high_potential_areas['location'].tolist()
 
+# --- new: threshold engine + H3 integration --------------------------------
 
-# --- Advanced Threshold-based Biochar Evaluation --------------------------
-
+from src.utils.geospatial import get_soil_properties_from_h3
+from src.data.loader import load_biochar_dataset
 from src.analysis.thresholds import evaluate_soil_against_biochars
 
-
-def evaluate_biochar_suitability(soil_row: pd.Series, biochar_data: pd.DataFrame) -> pd.DataFrame:
+def evaluate_point_suitability(h3_cell_id: str,
+                               dataset_path: str | None = None,
+                               top_n: int = 10) -> pd.DataFrame:
     """
-    Evaluate which biochars are most suitable for a single soil sample
-    using the threshold engine from thresholds.py.
+    Main entry for map click on an H3 cell.
+    1) Read soil props from your GEE layers at the H3 centroid
+    2) Load biochar dataset (Excel)
+    3) Run threshold engine (cumulative 0–20)
+    4) Return ranked results as DataFrame
     """
-    # Convert one soil record (row) to a dict
-    soil_dict = {
-        "moisture": soil_row.get("moisture"),
-        "pH": soil_row.get("pH"),
-        "SOC": soil_row.get("organic_matter") or soil_row.get("SOC"),
-        "EC": soil_row.get("EC"),
-        "temp": soil_row.get("temperature"),
-        "texture": soil_row.get("texture"),
-    }
-
-    # Convert DataFrame of biochar properties to list of dicts
-    biochar_list = biochar_data.to_dict(orient="records")
-
-    # Evaluate all biochars for this soil sample
-    results = evaluate_soil_against_biochars(soil_dict, biochar_list)
-
-    # Convert to DataFrame for easy ranking and integration
-    return pd.DataFrame(results).sort_values(by="score", ascending=False)
-
-
-def batch_biochar_evaluation(soil_data: pd.DataFrame, biochar_data: pd.DataFrame) -> pd.DataFrame:
-    """
-    Run biochar suitability evaluation for multiple soil locations.
-    Returns a long-format DataFrame linking each soil site to best-matched biochars.
-    """
-    all_results = []
-    for _, row in soil_data.iterrows():
-        soil_location = row.get("location", f"Sample_{_}")
-        eval_df = evaluate_biochar_suitability(row, biochar_data)
-        eval_df.insert(0, "location", soil_location)
-        all_results.append(eval_df)
-
-    return pd.concat(all_results, ignore_index=True)
+    soil = get_soil_properties_from_h3(h3_cell_id)
+    df_chars = load_biochar_dataset(dataset_path)  # DataFrame
+    bio_list = df_chars.to_dict(orient="records")
+    results = evaluate_soil_against_biochars(soil, bio_list)
+    out = pd.DataFrame(results)
+    out.insert(0, "h3_id", h3_cell_id)
+    out.insert(1, "soil_pH", soil.get("pH"))
+    out.insert(2, "soil_SOC", soil.get("SOC"))
+    out.insert(3, "soil_moisture", soil.get("moisture"))
+    out.insert(4, "soil_EC", soil.get("EC"))
+    out.insert(5, "soil_temp", soil.get("temp"))
+    out.insert(6, "soil_texture", soil.get("texture"))
+    if top_n:
+        out = out.head(top_n)
+    return out
