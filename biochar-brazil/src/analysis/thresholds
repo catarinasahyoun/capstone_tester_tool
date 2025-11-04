@@ -1,229 +1,166 @@
 """
-src/analysis/thresholds.py
-
-Biochar Threshold Evaluation Engine
------------------------------------
-This module evaluates how well different biochars match given soil conditions
-based on configurable threshold rules.
-
-It selects relevant rule bundles depending on soil inputs
-(e.g., moisture, pH, SOC, EC, texture, temperature)
-and scores each biochar accordingly.
-
-Output:
-    - A composite score (0–1)
-    - Activated threshold bundles
-    - Explanatory messages per property
+Threshold engine (cumulative scoring)
+- Robust to missing values
+- Cumulative points out of 20 (configurable)
+- Returns total_score, max_score, normalized_score and rationale
 """
 
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Tuple
 
+# ----- Scoring scale (you can move this to configs/config.yaml later) -----
+POINTS_PER_RULE = 2.0       # each rule can add up to 2 points
+TOTAL_POINTS_TARGET = 20.0  # overall feel; not hard-capped (we also return max_score)
 
-# ---------------------------------------------------------------------------
-# THRESHOLD CONFIGURATION
-# ---------------------------------------------------------------------------
-
-THRESHOLDS: Dict[str, Dict[str, Any]] = {
-    # -----------------------------------------------------------------------
-    # Soil Moisture Bundles
-    # -----------------------------------------------------------------------
+# ----- Rule bundles (same logic as before, trimmed to the essentials) -----
+BUNDLES: Dict[str, Dict[str, Any]] = {
     "moisture_low": {
-        "criteria": lambda s: s.get("moisture", 0) < 65,
+        "criteria": lambda s: s.get("moisture", 0) > 0 and s["moisture"] < 65,
         "rules": [
-            {"prop": "fixed_carbon", "type": "range", "min": 60, "max": 85, "weight": 2,
-             "message": "Prefer FC 60–85% for water retention"},
-            {"prop": "volatile_matter", "type": "max", "max": 20, "weight": 2,
-             "message": "VM < 20% reduces priming"},
-            {"prop": "ash", "type": "max", "max": 20, "weight": 1,
-             "message": "Ash < 20% (avoid salinity rise)"},
-            {"prop": "pH", "type": "range", "min": 7.0, "max": 9.5, "weight": 1,
-             "message": "Biochar pH 7–9.5"},
+            {"prop": "fixed_carbon",    "type": "range", "min": 60, "max": 85, "w": 2, "msg": "FC 60–85%"},
+            {"prop": "volatile_matter", "type": "max",   "max": 20,              "w": 2, "msg": "VM < 20%"},
+            {"prop": "ash",             "type": "max",   "max": 20,              "w": 1, "msg": "Ash < 20%"},
+            {"prop": "pH",              "type": "range", "min": 7.0, "max": 9.5, "w": 1, "msg": "Biochar pH 7–9.5"},
         ],
     },
-
     "moisture_high": {
         "criteria": lambda s: s.get("moisture", 0) >= 65,
         "rules": [
-            {"prop": "fixed_carbon", "type": "max", "max": 50, "weight": 1,
-             "message": "FC < 50% in wet soils"},
-            {"prop": "volatile_matter", "type": "min", "min": 30, "weight": 1,
-             "message": "VM > 30% for biostimulation (wet)"},
-            {"prop": "ash", "type": "min", "min": 40, "weight": 2,
-             "message": "Ash > 40% for liming in wet soils"},
-            {"prop": "pH", "type": "min", "min": 10, "weight": 2,
-             "message": "Biochar pH > 10 for liming capacity"},
+            {"prop": "fixed_carbon",    "type": "max", "max": 50,               "w": 1, "msg": "FC < 50%"},
+            {"prop": "volatile_matter", "type": "min", "min": 30,               "w": 1, "msg": "VM > 30%"},
+            {"prop": "ash",             "type": "min", "min": 40,               "w": 2, "msg": "Ash > 40%"},
+            {"prop": "pH",              "type": "min", "min": 10,               "w": 2, "msg": "Biochar pH > 10"},
         ],
     },
-
-    # -----------------------------------------------------------------------
-    # Soil pH Bundles
-    # -----------------------------------------------------------------------
     "acidic_soil": {
         "criteria": lambda s: s.get("pH", 7) < 6.0,
         "rules": [
-            {"prop": "ash", "type": "min", "min": 25, "weight": 2, "message": "Ash > 25% for liming effect"},
-            {"prop": "c_pct", "type": "min", "min": 50, "weight": 1, "message": "C% > 50%"},
-            {"prop": "h_pct", "type": "max", "max": 2.4, "weight": 1, "message": "H% < 2.4%"},
-            {"prop": "bet", "type": "min", "min": 200, "weight": 2, "message": "BET > 200 m²/g"},
-            {"prop": "pore_volume", "type": "min", "min": 1.0, "weight": 1, "message": "Pore volume > 1.0 cm³/g"},
-            {"prop": "pH", "type": "min", "min": 7.0, "weight": 2, "message": "Biochar pH > 7 (ideally > 11.5)"},
+            {"prop": "ash",         "type": "min",   "min": 25,              "w": 2, "msg": "Ash > 25% (liming)"},
+            {"prop": "c_pct",       "type": "min",   "min": 50,              "w": 1, "msg": "C% > 50%"},
+            {"prop": "h_pct",       "type": "max",   "max": 2.4,             "w": 1, "msg": "H% < 2.4%"},
+            {"prop": "bet",         "type": "min",   "min": 200,             "w": 2, "msg": "BET > 200 m²/g"},
+            {"prop": "pore_volume", "type": "min",   "min": 1.0,             "w": 1, "msg": "PV > 1.0 cm³/g"},
+            {"prop": "pH",          "type": "min",   "min": 7.0,             "w": 2, "msg": "Biochar pH > 7"},
         ],
     },
-
     "basic_soil": {
         "criteria": lambda s: s.get("pH", 7) > 7.0,
         "rules": [
-            {"prop": "ash", "type": "max", "max": 10, "weight": 2, "message": "Ash < 10% for alkaline soils"},
-            {"prop": "c_pct", "type": "min", "min": 50, "weight": 1, "message": "C% > 50%"},
-            {"prop": "h_pct", "type": "min", "min": 6, "weight": 1, "message": "H% > 6%"},
-            {"prop": "bet", "type": "min", "min": 200, "weight": 2, "message": "BET > 200 m²/g"},
-            {"prop": "pore_volume", "type": "min", "min": 1.0, "weight": 1, "message": "Pore volume > 1.0 cm³/g"},
-            {"prop": "pH", "type": "max", "max": 6, "weight": 2, "message": "Biochar pH < 6 preferred"},
+            {"prop": "ash",         "type": "max", "max": 10,               "w": 2, "msg": "Ash < 10%"},
+            {"prop": "c_pct",       "type": "min", "min": 50,               "w": 1, "msg": "C% > 50%"},
+            {"prop": "h_pct",       "type": "min", "min": 6,                "w": 1, "msg": "H% > 6%"},
+            {"prop": "bet",         "type": "min", "min": 200,              "w": 2, "msg": "BET > 200 m²/g"},
+            {"prop": "pore_volume", "type": "min", "min": 1.0,              "w": 1, "msg": "PV > 1.0 cm³/g"},
+            {"prop": "pH",          "type": "max", "max": 6,                "w": 2, "msg": "Biochar pH < 6"},
         ],
     },
-
-    # -----------------------------------------------------------------------
-    # Soil Organic Carbon Bundles
-    # -----------------------------------------------------------------------
-    "soc_too_high": {
+    "soc_too_high": {  # hard blocker
         "criteria": lambda s: s.get("SOC", 0) > 5,
         "rules": [
-            {"prop": "fixed_carbon", "type": "max", "max": 1000, "weight": 999,
-             "critical": True, "message": "SOC > 5% → do not apply biochar"},
+            {"prop": "fixed_carbon", "type": "max", "max": 1000, "w": 999, "critical": True, "msg": "SOC > 5% → do not apply"},
         ],
     },
-
     "soc_low": {
         "criteria": lambda s: s.get("SOC", 100) < 2.6,
         "rules": [
-            {"prop": "volatile_matter", "type": "max", "max": 15, "weight": 2, "message": "VM < 15% for stability"},
-            {"prop": "ash", "type": "range", "min": 20, "max": 30, "weight": 1, "message": "Ash 20–30%"},
-            {"prop": "c_pct", "type": "min", "min": 60, "weight": 2, "message": "C% > 60%"},
-            {"prop": "h_pct", "type": "max", "max": 6, "weight": 1, "message": "H% ≤ 6%"},
-            {"prop": "o_pct", "type": "range", "min": 10, "max": 30, "weight": 1, "message": "O% 10–30%"},
-            {"prop": "o_c_ratio", "type": "max", "max": 0.4, "weight": 2, "message": "O/C < 0.4"},
-            {"prop": "pH", "type": "max", "max": 10, "weight": 1, "message": "Biochar pH < 10"},
+            {"prop": "volatile_matter", "type": "max",   "max": 15,             "w": 2, "msg": "VM < 15% (stability)"},
+            {"prop": "ash",             "type": "range", "min": 20, "max": 30,  "w": 1, "msg": "Ash 20–30%"},
+            {"prop": "c_pct",           "type": "min",   "min": 60,             "w": 2, "msg": "C% > 60%"},
+            {"prop": "h_pct",           "type": "max",   "max": 6,              "w": 1, "msg": "H% ≤ 6%"},
+            {"prop": "o_pct",           "type": "range", "min": 10, "max": 30,  "w": 1, "msg": "O% 10–30%"},
+            {"prop": "o_c_ratio",       "type": "max",   "max": 0.4,            "w": 2, "msg": "O/C < 0.4"},
+            {"prop": "pH",              "type": "max",   "max": 10,             "w": 1, "msg": "Biochar pH < 10"},
         ],
     },
-
-    # -----------------------------------------------------------------------
-    # Salinity & Temperature Bundles
-    # -----------------------------------------------------------------------
     "saline_warning": {
         "criteria": lambda s: s.get("EC", 0) >= 4,
         "rules": [
-            {"prop": "ash", "type": "max", "max": 20, "weight": 2, "message": "Ash < 20% to avoid salinity"},
-            {"prop": "pH", "type": "max", "max": 9.5, "weight": 2, "message": "Biochar pH < 9.5 in saline soils"},
+            {"prop": "ash", "type": "max", "max": 20, "w": 2, "msg": "Ash < 20% (salinity)"},
+            {"prop": "pH",  "type": "max", "max": 9.5,"w": 2, "msg": "Biochar pH < 9.5 (salinity)"},
         ],
     },
-
     "warm_climate": {
         "criteria": lambda s: s.get("temp", 0) >= 25,
         "rules": [
-            {"prop": "ash", "type": "min", "min": 3.07, "weight": 1, "message": "Ash > 3.07%"},
-            {"prop": "moisture", "type": "min", "min": 0.78, "weight": 1, "message": "Biochar moisture > 0.78%"},
-            {"prop": "c_pct", "type": "min", "min": 60, "weight": 1, "message": "C% > 60%"},
-            {"prop": "bet", "type": "max", "max": 265, "weight": 1, "message": "BET < 265 m²/g"},
+            {"prop": "ash",     "type": "min", "min": 3.07, "w": 1, "msg": "Ash > 3.07%"},
+            {"prop": "moisture","type": "min", "min": 0.78, "w": 1, "msg": "Char moisture > 0.78%"},
+            {"prop": "c_pct",   "type": "min", "min": 60,   "w": 1, "msg": "C% > 60%"},
+            {"prop": "bet",     "type": "max", "max": 265,  "w": 1, "msg": "BET < 265 m²/g"},
         ],
     },
 }
 
+# ----- helpers --------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# SCORING LOGIC
-# ---------------------------------------------------------------------------
+def _score_min(v: float, m: float) -> float:
+    if v is None: return 0.5
+    return 1.0 if v >= m else max(0.0, v / m)
 
-def score_rule(value: float, rule: Dict[str, Any]) -> float:
-    """Return score [0–1] for value against rule."""
-    if value is None:
-        return 0.5  # neutral if missing
+def _score_max(v: float, M: float) -> float:
+    if v is None: return 0.5
+    return 1.0 if v <= M else max(0.0, 1 - (v - M) / max(M, 1e-9))
 
-    r_type = rule["type"]
-    if r_type == "min":
-        return 1.0 if value >= rule["min"] else max(0, value / rule["min"])
-    elif r_type == "max":
-        return 1.0 if value <= rule["max"] else max(0, 1 - (value - rule["max"]) / rule["max"])
-    elif r_type == "range":
-        if rule["min"] <= value <= rule["max"]:
-            return 1.0
-        d = min(abs(value - rule["min"]), abs(value - rule["max"]))
-        return max(0, 1 - d / (0.1 * (rule["max"] - rule["min"])))
+def _score_range(v: float, a: float, b: float) -> float:
+    if v is None: return 0.5
+    if a <= v <= b: return 1.0
+    d = min(abs(v - a), abs(v - b))
+    tol = max(0.1 * (b - a), 1e-6)
+    return max(0.0, 1 - d / tol)
+
+def _score_rule(value: Any, rule: Dict[str, Any]) -> float:
+    t = rule["type"]
+    if t == "min":   return _score_min(value, rule["min"])
+    if t == "max":   return _score_max(value, rule["max"])
+    if t == "range": return _score_range(value, rule["min"], rule["max"])
     return 0.0
 
+def _select_bundles(soil: Dict[str, Any]) -> List[str]:
+    return [k for k, b in BUNDLES.items() if b["criteria"](soil)]
 
-def select_active_bundles(soil: Dict[str, Any]) -> List[str]:
-    """Return list of threshold keys that apply for given soil."""
-    return [key for key, bundle in THRESHOLDS.items() if bundle["criteria"](soil)]
-
-
-def evaluate_biochar(biochar: Dict[str, Any], soil: Dict[str, Any]) -> Dict[str, Any]:
-    """Compute composite suitability score for one biochar."""
-    active = select_active_bundles(soil)
-    scores = []
-    messages = []
+def evaluate_one(bio: Dict[str, Any], soil: Dict[str, Any]) -> Dict[str, Any]:
+    active = _select_bundles(soil)
+    total_pts, max_pts = 0.0, 0.0
+    rationale: List[str] = []
     hard_fail = False
 
     for key in active:
-        for rule in THRESHOLDS[key]["rules"]:
-            val = biochar.get(rule["prop"])
-            s = score_rule(val, rule)
-            weight = rule.get("weight", 1)
+        for r in BUNDLES[key]["rules"]:
+            w = float(r.get("w", 1.0))
+            max_pts += w * POINTS_PER_RULE
 
-            if rule.get("critical") and s < 0.8:
+            val = bio.get(r["prop"])
+            s01 = _score_rule(val, r)            # 0..1
+            pts = s01 * w * POINTS_PER_RULE      # 0..(w*2)
+
+            if r.get("critical") and s01 < 0.8:
                 hard_fail = True
-                messages.append(f"⚠️ Critical fail: {rule['message']}")
+                rationale.append(f"⚠ {r['msg']} (critical) → 0 pts")
             else:
-                messages.append(f"{rule['prop']}={val} → score={s:.2f}")
+                shown = "None" if val is None else f"{val}"
+                rationale.append(f"{r['msg']}: {r['prop']}={shown} → +{pts:.2f} pts")
+                total_pts += pts
 
-            scores.append(s * weight)
+    if hard_fail:
+        return {
+            "biochar_id": bio.get("id"),
+            "name": bio.get("name"),
+            "total_score": 0.0,
+            "max_score": max_pts,
+            "normalized_score": 0.0,
+            "active": active,
+            "messages": rationale,
+        }
 
-    if not scores:
-        return {"biochar_id": biochar.get("id"), "score": 0, "messages": ["No active bundles"], "active": active}
-
-    final_score = 0 if hard_fail else sum(scores) / len(scores)
+    norm = (total_pts / max_pts) if max_pts > 0 else 0.0
     return {
-        "biochar_id": biochar.get("id"),
-        "name": biochar.get("name"),
-        "score": round(final_score, 3),
+        "biochar_id": bio.get("id"),
+        "name": bio.get("name"),
+        "total_score": round(total_pts, 2),
+        "max_score": round(max_pts, 2),
+        "normalized_score": round(norm, 3),
         "active": active,
-        "messages": messages,
+        "messages": rationale,
     }
-
 
 def evaluate_soil_against_biochars(soil: Dict[str, Any], biochars: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Evaluate multiple biochars and return ranked list."""
-    results = [evaluate_biochar(b, soil) for b in biochars]
-    return sorted(results, key=lambda x: x["score"], reverse=True)
-
-
-# ---------------------------------------------------------------------------
-# DEMO EXECUTION (optional standalone run)
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    soil_sample = {
-        "moisture": 48,
-        "pH": 5.4,
-        "SOC": 2.1,
-        "EC": 0.6,
-        "temp": 27,
-        "texture": "sandy loam",
-    }
-
-    biochars = [
-        {"id": "B1", "name": "Rice Husk Char 400°C",
-         "fixed_carbon": 46, "volatile_matter": 22, "ash": 29,
-         "c_pct": 52, "h_pct": 1.8, "o_pct": 12.6, "o_c_ratio": 0.24,
-         "pH": 5.3, "bet": 120, "pore_volume": 0.25, "moisture": 1.5},
-        {"id": "B2", "name": "Brazil Nut Shell Char 600°C",
-         "fixed_carbon": 78.9, "volatile_matter": 18.2, "ash": 2.9,
-         "c_pct": 89.5, "h_pct": 2.6, "o_pct": 6.5, "o_c_ratio": 0.07,
-         "pH": 10.2, "bet": 190, "pore_volume": 0.14, "moisture": 0.9},
-    ]
-
-    results = evaluate_soil_against_biochars(soil_sample, biochars)
-    for r in results:
-        print(f"\nBiochar: {r['name']} | Score: {r['score']}")
-        print("Active bundles:", r["active"])
-        for msg in r["messages"]:
-            print("  -", msg)
-
+    results = [evaluate_one(b, soil) for b in biochars]
+    return sorted(results, key=lambda x: (x["total_score"], x["normalized_score"]), reverse=True)
