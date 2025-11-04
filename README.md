@@ -13,6 +13,7 @@ biochar-brazil
 │   │   ├── suitability.py  # Suitability scoring logic
 │   │   ├── risk_assessment.py # Risk assessment for biochar application
 │   │   └── aggregation.py  # Aggregation of suitability scores
+│   │   └── thresholds.py  # Aggregation of suitability scores
 │   ├── models             # Models for analysis
 │   │   ├── spatial_model.py # Spatial models for geospatial analysis
 │   │   └── ml_model.py     # Machine learning models
