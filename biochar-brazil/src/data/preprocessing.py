@@ -1,47 +1,76 @@
+"""
+Data preprocessing utilities for the Biochar-Brazil project.
+Handles cleaning, normalization, and encoding for multiple dataset types.
+"""
+
 import pandas as pd
 import numpy as np
 
-def clean_data(df):
-    # Remove duplicates
+
+def clean_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Clean the input DataFrame:
+    - Remove duplicates
+    - Fill missing numeric values with column mean
+    - Drop rows with missing coordinates if present
+    """
     df = df.drop_duplicates()
-    
-    # Fill missing values
-    df = df.fillna(method='ffill')
-    
+
+    # If latitude/longitude exist, drop rows missing them
+    if "latitude" in df.columns and "longitude" in df.columns:
+        df = df.dropna(subset=["latitude", "longitude"])
+
+    # Fill numeric NaN with mean
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].mean())
+
+    print("Data cleaned successfully.")
     return df
 
-def prepare_data(raw_data_path):
-    # Load raw data
-    df = pd.read_csv(raw_data_path)
-    
-    # Clean the data
-    df = clean_data(df)
-    
-    # Additional preprocessing steps can be added here
-    
-    return df
 
-def normalize_data(df, columns):
-    # Normalize specified columns
+def normalize_data(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """
+    Normalize numeric columns to range [0,1].
+    Skips columns that are not found in the DataFrame.
+    """
     for column in columns:
-        df[column] = (df[column] - df[column].min()) / (df[column].max() - df[column].min())
-    
+        if column in df.columns:
+            min_val = df[column].min()
+            max_val = df[column].max()
+            if pd.notna(min_val) and pd.notna(max_val) and max_val != min_val:
+                df[column] = (df[column] - min_val) / (max_val - min_val)
+    print("Numeric normalization completed.")
     return df
 
-def encode_categorical(df, columns):
-    # One-hot encode categorical variables
-    df = pd.get_dummies(df, columns=columns, drop_first=True)
-    
+
+def encode_categorical(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """
+    One-hot encode categorical variables, if present.
+    """
+    cols_to_encode = [c for c in columns if c in df.columns]
+    if cols_to_encode:
+        df = pd.get_dummies(df, columns=cols_to_encode, drop_first=True)
+        print(f"Encoded categorical columns: {cols_to_encode}")
     return df
 
-def preprocess(raw_data_path, categorical_columns):
-    # Prepare the data
-    df = prepare_data(raw_data_path)
-    
-    # Normalize numerical columns (example: 'pH', 'N', 'P', 'K')
-    df = normalize_data(df, ['pH', 'N', 'P', 'K'])
-    
-    # Encode categorical columns
-    df = encode_categorical(df, categorical_columns)
-    
+
+def preprocess(raw_data_path: str, categorical_columns: list[str] = None) -> pd.DataFrame:
+    """
+    Full preprocessing pipeline:
+    - Load CSV
+    - Clean data
+    - Normalize numeric columns (pH, N, P, K if available)
+    - Encode categorical columns (if any)
+    """
+    df = pd.read_csv(raw_data_path)
+    df = clean_data(df)
+
+    # Normalize known numeric columns (only if they exist)
+    df = normalize_data(df, ["pH", "N", "P", "K", "organic_carbon", "moisture"])
+
+    # Encode categorical variables (optional)
+    if categorical_columns:
+        df = encode_categorical(df, categorical_columns)
+
+    print(f"Preprocessing completed for {raw_data_path}")
     return df
