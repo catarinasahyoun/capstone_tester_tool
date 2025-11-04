@@ -27,5 +27,5 @@ analysis:
   risk_assessment_enabled: true
 
 visualization:
-  map_output_path: output/maps/
-  plot_output_path: output/plots/
+  map_output_path: docs/output/maps/
+  plot_output_path: docs/output/plots/
