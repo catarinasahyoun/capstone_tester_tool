@@ -1,71 +1,46 @@
 """
-Feedstock / biochar dataset loader.
-Compatible with your uploaded Dataset_feedstock_ML.xlsx
+General data loader for all CSV/Excel datasets used in the Biochar-Brazil project.
+Supports multiple datasets (soil, biomass, environmental, etc.).
 """
 
-from typing import List
-import pandas as pd
 from pathlib import Path
+import pandas as pd
 
-CANDIDATE_COLUMNS = {
-    "id": "id",
-    "name": "name",
-    "feedstock": "feedstock",
-    "fixed carbon": "fixed_carbon",
-    "volatile matter": "volatile_matter",
-    "ash": "ash",
-    "moisture": "moisture",
-    "c": "c_pct", "c%": "c_pct", "c_pct": "c_pct",
-    "h": "h_pct", "h%": "h_pct", "h_pct": "h_pct",
-    "o": "o_pct", "o%": "o_pct", "o_pct": "o_pct",
-    "o/c": "o_c_ratio", "o_c_ratio": "o_c_ratio",
-    "pH": "pH", "ph": "pH",
-    "bet": "bet", "surface area": "bet",
-    "pore volume": "pore_volume",
-    "density": "density",
-    "production temp": "production_temp", "final temperature": "production_temp",
-}
-
-def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    cols = {c: c.strip().lower() for c in df.columns}
-    df = df.rename(columns=cols)
-    mapped = {}
-    for c in df.columns:
-        key = c
-        if c in CANDIDATE_COLUMNS:
-            mapped[c] = CANDIDATE_COLUMNS[c]
-        else:
-            # try loose matching
-            for k, v in CANDIDATE_COLUMNS.items():
-                if k in c:
-                    mapped[c] = v
-                    break
-    df = df.rename(columns=mapped)
-    return df
-
-def load_biochar_dataset(path: str | Path = "data/processed/Dataset_feedstock_ML.xlsx") -> pd.DataFrame:
+def load_data(path: str | Path) -> pd.DataFrame:
+    """
+    Load a dataset (CSV or Excel) from the given path.
+    Automatically detects file format.
+    """
     path = Path(path)
     if not path.exists():
-        # fallback to uploaded path if running locally
-        alt = Path("/mnt/data/Dataset_feedstock_ML.xlsx")
-        if alt.exists():
-            path = alt
-        else:
-            raise FileNotFoundError(f"Biochar dataset not found at {path}")
+        raise FileNotFoundError(f"Dataset not found at {path}")
 
-    df = pd.read_excel(path)
-    df = _normalize_columns(df)
-    # keep only the columns the engine understands; missing are ok
-    keep = [
-        "id","name","feedstock","fixed_carbon","volatile_matter","ash","moisture",
-        "c_pct","h_pct","o_pct","o_c_ratio","pH","bet","pore_volume","density","production_temp"
-    ]
-    cols_present = [c for c in keep if c in df.columns]
-    # ensure there is an id
-    if "id" not in cols_present:
-        df["id"] = df.index.astype(str)
-        cols_present = ["id"] + [c for c in cols_present if c != "id"]
-    if "name" not in cols_present:
-        df["name"] = df["feedstock"] if "feedstock" in df.columns else df["id"]
-        if "name" not in cols_present: cols_present = ["name"] + cols_present
-    return df[cols_present]
+    if path.suffix.lower() in [".csv"]:
+        df = pd.read_csv(path)
+    elif path.suffix.lower() in [".xlsx", ".xls"]:
+        df = pd.read_excel(path)
+    else:
+        raise ValueError(f"Unsupported file format: {path.suffix}")
+
+    print(f"Loaded dataset from {path} with {len(df)} rows and {len(df.columns)} columns.")
+    return df
+
+
+def load_multiple(datasets: list[str] | None = None, base_dir: str = "data/raw") -> dict[str, pd.DataFrame]:
+    """
+    Load multiple datasets at once from the raw data folder.
+    Returns a dictionary of DataFrames.
+    Example: data = load_multiple(["soil_data.csv", "biomass_data.csv"])
+    """
+    base_path = Path(base_dir)
+    if datasets is None:
+        datasets = [p.name for p in base_path.glob("*.csv")]
+
+    loaded = {}
+    for file_name in datasets:
+        try:
+            df = load_data(base_path / file_name)
+            loaded[file_name] = df
+        except Exception as e:
+            print(f"Warning: Could not load {file_name}: {e}")
+    return loaded
