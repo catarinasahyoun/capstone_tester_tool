@@ -1,17 +1,37 @@
-def validate_coordinates(lat, lon):
-    if not (-90 <= lat <= 90):
-        raise ValueError("Latitude must be between -90 and 90 degrees.")
-    if not (-180 <= lon <= 180):
-        raise ValueError("Longitude must be between -180 and 180 degrees.")
-    return True
+"""
+Geospatial helpers:
+- Convert H3 cell to centroid (lat/lon)
+- Sample your downloaded GEE layers to get soil properties at that cell
+"""
 
-def calculate_distance(coord1, coord2):
-    from geopy.distance import geodesic
-    return geodesic(coord1, coord2).kilometers
+from typing import Dict, Any
+from h3 import h3
 
-def convert_to_geojson(features):
-    import geojson
-    return geojson.dumps({"type": "FeatureCollection", "features": features})
+# If your GEE layers are saved as GeoTIFFs, you can wire rasterio here.
+# from rasterio.sample import sample_gen  # example
+# import rasterio
 
-def extract_coordinates(geojson_feature):
-    return geojson_feature['geometry']['coordinates']
+def h3_to_latlon(h3_id: str) -> tuple[float, float]:
+    lat, lon = h3.cell_to_latlng(h3_id)
+    return float(lat), float(lon)
+
+def get_soil_properties_from_h3(h3_id: str) -> Dict[str, Any]:
+    lat, lon = h3_to_latlon(h3_id)
+
+    # TODO: Replace the mock values below with real raster sampling or table lookup
+    # Example idea:
+    # with rasterio.open("data/external/soil_ph.tif") as src:
+    #     pH = list(src.sample([(lon, lat)]))[0][0]
+    # ... repeat for SOC, moisture, EC, temp, texture code ...
+
+    soil = {
+        "pH": 5.8,          # mock
+        "SOC": 2.4,         # mock, %
+        "moisture": 53.0,   # mock, %
+        "EC": 1.1,          # mock, dS/m
+        "temp": 27.0,       # mock, °C
+        "texture": "sandy loam",  # mock or derived from a texture raster
+        "lat": lat,
+        "lon": lon,
+    }
+    return soil
