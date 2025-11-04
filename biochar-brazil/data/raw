@@ -1,1 +1,5 @@
-# This directory is intentionally left blank.
+ ├── SOC.csv
+ ├── soil_moisture.csv
+ ├── soil_pH.csv
+ ├── soil_temp.csv
+ ├── soil_type.csv
