@@ -1,19 +1,17 @@
 #!/bin/bash
+# =========================================================
+# Run full Biochar-Brazil modeling pipeline
+# =========================================================
 
-# Fetch data
+echo "Starting Biochar-Brazil pipeline..."
+
+# Step 1: Fetch required datasets
 bash ./scripts/fetch_data.sh
 
-# Preprocess data
-python3 -m src.data.preprocessing
+# Step 2: Execute main modeling pipeline
+echo "Running main analysis workflow..."
+python3 src/main.py
 
-# Run analysis
-python3 -m src.analysis.suitability
-python3 -m src.analysis.risk_assessment
-python3 -m src.analysis.aggregation
-
-# Generate visualizations
-python3 -m src.visualization.map_renderer
-python3 -m src.visualization.plots
-
-# Save results
-echo "Pipeline execution completed. Results are saved in the data/processed directory."
+# Step 3: Completion message
+echo "Pipeline execution completed successfully."
+echo "Processed results are saved in the data/processed directory."
