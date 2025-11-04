@@ -13,6 +13,7 @@ logging:
   handlers:
     - console
     - file
+file_path: logs/app.log
 
 geo:
   region: Brazil
