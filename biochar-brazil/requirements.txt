@@ -1,17 +1,18 @@
-numpy
 pandas
-geopandas
-scikit-learn
+numpy
+pyyaml
+typer
+rich
 matplotlib
-seaborn
-pydeck
-requests
-pydantic
-jupyter
-notebook
-pytest
-pytest-cov
-rasterio
+
+# Geo + raster + geometry
+geopandas
 shapely
-fiona
+pyproj
+rasterio
+rioxarray
 xarray
+h3
+# Google Earth Engine
+earthengine-api
+geemap
