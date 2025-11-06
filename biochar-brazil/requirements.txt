@@ -9,7 +9,7 @@ index c832105092afbd73261d6bb101e4e6bb6d39dd22..8a7e7ddb28ba7775ad75d282d2af1cff
  typer
  rich
  matplotlib
-+openpyxl
+ openpyxl
  
  # Geo + raster + geometry
  geopandas
