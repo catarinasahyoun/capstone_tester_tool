@@ -1,18 +1,24 @@
-pandas
-numpy
-pyyaml
-typer
-rich
-matplotlib
-
-# Geo + raster + geometry
-geopandas
-shapely
-pyproj
-rasterio
-rioxarray
-xarray
-h3
-# Google Earth Engine
-earthengine-api
-geemap
+diff --git a/biochar-brazil/requirements.txt b/biochar-brazil/requirements.txt
+index c832105092afbd73261d6bb101e4e6bb6d39dd22..8a7e7ddb28ba7775ad75d282d2af1cff86792ede 100644
+--- a/biochar-brazil/requirements.txt
++++ b/biochar-brazil/requirements.txt
+@@ -1,18 +1,19 @@
+ pandas
+ numpy
+ pyyaml
+ typer
+ rich
+ matplotlib
++openpyxl
+ 
+ # Geo + raster + geometry
+ geopandas
+ shapely
+ pyproj
+ rasterio
+ rioxarray
+ xarray
+ h3
+ # Google Earth Engine
+ earthengine-api
+ geemap
