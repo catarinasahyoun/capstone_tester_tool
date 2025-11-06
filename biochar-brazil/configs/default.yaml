@@ -1,0 +1,76 @@
+region:
+  # Default to whole state if user passes no coordinates.
+  # Admin boundary will be fetched from GEE; this bbox is just a fallback.
+  bbox: [-65.0, -18.0, -50.0, -7.0]   # [minx, miny, maxx, maxy] rough Mato Grosso
+  aoi_radius_km: 100
+
+paths:
+  # Local outputs
+  output_dir: "data/outputs"
+  rasters_dir: "data/outputs/rasters"
+  tables_dir: "data/outputs/tables"
+
+gee:
+  # Collections & bands (tweak as needed)
+  layers:
+    soil_moisture:
+      collection: "NASA/SMAP/SPL3SMP_E/005"
+      band: "soil_moisture"
+      reducer: "median"
+      period: {start: "2019-01-01", end: "2024-12-31"}
+      scale_m: 1000
+    soil_temp:
+      collection: "MODIS/061/MOD11A2"
+      band: "LST_Day_1km"
+      reducer: "median"
+      period: {start: "2019-01-01", end: "2024-12-31"}
+      scale_m: 1000
+    soil_ph:
+      collection: "OpenLandMap/SOL/SOL_PH-H2O_USDA-6A1C_M/v02"
+      band: "phh2o_usda.4a1a1h_m_m_250m_b0"
+      reducer: "median"
+      period: {start: "2015-01-01", end: "2020-12-31"}
+      scale_m: 250
+    soil_organic_carbon:
+      collection: "OpenLandMap/SOL/SOL_ORGANIC-CARBON_USDA-6A1C_M/v02"
+      band: "oc_usda.4a1h_mgkg-1_250m_b0"
+      reducer: "median"
+      period: {start: "2015-01-01", end: "2020-12-31"}
+      scale_m: 250
+    soil_type:
+      collection: "OpenLandMap/SOL/SOL_TEXTURE-CLASS_USDA-TT_M/v01"
+      band: "usda_tt_class_250m_b0"
+      reducer: "mode"
+      period: {start: "2015-01-01", end: "2020-12-31"}
+      scale_m: 250
+    land_cover:
+      collection: "COPERNICUS/Landcover/100m/Proba-V-C3/Global"
+      band: "discrete_classification"
+      reducer: "mode"
+      period: {start: "2019-01-01", end: "2024-12-31"}
+      scale_m: 100
+
+  # Where to export within your Google Drive if you choose GEE Export (optional).
+  drive_folder: "biochar-mt-exports"
+
+scoring:
+  # Placeholder until you send calculator logic
+  weights:
+    soil_ph: 0.2
+    soc: 0.2
+    moisture: 0.2
+    temp: 0.15
+    soil_type: 0.1
+    land_cover: 0.15
+  clamp_min: 0.0
+  clamp_max: 10.0
+
+recommendation:
+  good_threshold: 7.5   # out of 10
+  ok_threshold: 6.0
+
+charts:
+  dpi: 120
+
+h3:
+  resolution: 6  # ~3.1 km edge length; adjust as needed
